@@ -7,6 +7,7 @@ Script to get Let's Encrypt Wildcard SSL Certificate using DNS in ConoHa VPS.
 - CentOS7
 - certbot 0.22.0+
 - jq
+- curl ( with debian 11 )
 - DNS to manage your domain with ConoHa VPS.
 
 ## Setup
