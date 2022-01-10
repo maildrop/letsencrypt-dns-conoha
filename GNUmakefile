@@ -3,6 +3,7 @@ all:
 
 clean:
 	find . -type f -name '*~' -delete 
+	find . -type f -name "tmp.*" -delete
 
 install:
 	if [ ! -d /var/lib/letsencrypt/letsencrypt-dns-conoha ]; then mkdir /var/lib/letsencrypt/letsencrypt-dns-conoha ; fi 
