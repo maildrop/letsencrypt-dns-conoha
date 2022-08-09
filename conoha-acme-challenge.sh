@@ -1,6 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env -S bash
 
 PATH=/bin:/usr/bin
+export PATH
 
 if [ -z "$CERTBOT_DOMAIN" ] ; then
     CERTBOT_DOMAIN=$(hostname -f)
@@ -10,7 +11,14 @@ if [ -z "$CERTBOT_VALIDATION" ] ; then
 fi
 
 SCRIPT_PATH=$(dirname $(readlink -f $0))
-. ${SCRIPT_PATH}/conoha_identity_api.sh
+
+if [ ! -f "${SCRIPT_PATH}/conoha_identity_api.sh" ] ; then
+    echo "${SCRIPT_PATH}/conoha_identity_api.sh is not found"
+    exit 3
+else
+    . ${SCRIPT_PATH}/conoha_identity_api.sh
+fi
+
 
 if [ -z "${CNH_TOKEN}" ] ; then
     echo identity token is not defined
