@@ -29,6 +29,15 @@ use () {
     return 0
 }
 
+remove_trailing_dot () {
+    if [ "$1" = "${1%%.}" ] ; then
+        echo $1
+    else
+        remove_trailing_dot "${1%%.}"
+    fi
+}
+
+
 print_help () {
     printf "%s conoha dns acme challenge utility\n" ${0##*/}
     printf " usage %s [-h] [-v] [-r] [-i <conoha id file>] [-f <fqdn>] [-t <challagne token>]\n" ${0##*/}
@@ -37,7 +46,7 @@ print_help () {
     printf "   -n : no-wait\n"
     printf "   -r : remove\n"
     printf "   -i <conoha_id file> : conoha_id file\n"
-    printf "   -f <fqdn> : specify fqdn default \$(hostname -f) = \"%s\"\n" $(hostname -f)
+    printf "   -f <fqdn> : specify fqdn default \$(hostname -f). = \"%s\"\n" "$(hostname -f)."
     printf "   -t <challange token> : specify acme challange token\n" 
     printf "\n"
     printf " for debug usage\n"
@@ -79,7 +88,7 @@ while getopts vhnrdi:f:t: opt ; do
         "i" )
             identity_file=$OPTARG;;
         "f" )
-            certbot_domain=$OPTARG;;
+            certbot_domain="$(remove_trailing_dot "$OPTARG").";;
         "t" )
             certbot_validation=$OPTARG;;
         * )
