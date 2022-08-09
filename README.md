@@ -3,6 +3,23 @@
 ## Overview
 Script to get Let's Encrypt Wildcard SSL Certificate using DNS in ConoHa VPS.
 
+```
+conoha-acme-challenge2.sh conoha dns acme challenge utility
+ usage conoha-acme-challenge2.sh [-h] [-v] [-r] [-i <conoha id file>] [-f <fqdn>] [-t <challagne token>]
+   -h : help
+   -v : verbose
+   -n : no-wait
+   -r : remove
+   -i <conoha_id file> : conoha_id file
+   -f <fqdn> : specify fqdn default $(hostname -f) = "frederica.iogilab.net"
+   -t <challange token> : specify acme challange token
+
+ for debug usage
+  show conoha_id: conoha-acme-challenge2.sh -vh
+  add test challange token: conoha-acme-challenge2.sh -vn
+  remove test challenge token: conoha-acme-challenge2.sh -vr
+```
+
 ## Requirements
 - CentOS7
 - certbot 0.22.0+

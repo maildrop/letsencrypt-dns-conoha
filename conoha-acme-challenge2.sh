@@ -31,16 +31,20 @@ use () {
 
 print_help () {
     printf "%s conoha dns acme challenge utility\n" ${0##*/}
-    printf " usage %s [-h] [-v] [-r] [-d] [-i <conoha id file>] [-f <fqdn>] [-t <challagne token>]\n" ${0##*/}
+    printf " usage %s [-h] [-v] [-r] [-i <conoha id file>] [-f <fqdn>] [-t <challagne token>]\n" ${0##*/}
     printf "   -h : help\n"
     printf "   -v : verbose\n"
     printf "   -n : no-wait\n"
     printf "   -r : remove\n"
-#    printf "   -d : dry-run\n"
     printf "   -i <conoha_id file> : conoha_id file\n"
     printf "   -f <fqdn> : specify fqdn default \$(hostname -f) = \"%s\"\n" $(hostname -f)
     printf "   -t <challange token> : specify acme challange token\n" 
-
+    printf "\n"
+    printf " for debug usage\n"
+    printf "  show conoha_id: %s -vh\n" ${0##*/} 
+    printf "  add test challange token: %s -vn\n" ${0##*/} 
+    printf "  remove test challenge token: %s -vr\n" ${0##*/}
+    
     if [ -n "${verbose:-}" ] ; then
         echo 
         echo "= verbose ="
