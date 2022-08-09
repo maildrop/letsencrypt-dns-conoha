@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env -S sh 
 
 PATH=/bin:/usr/bin
 
@@ -7,6 +7,17 @@ if [ -f "${PWD}/conoha_id" ] ; then
 fi
 
 echo "You see https://manage.conoha.jp/API/" 
+
+if [ -z "$identity_service" ] ; then
+    echo -n "Identity Service URL: " 
+else
+    echo "Current Identity Service URL is ${identity_service}"
+    echo -n "Identity Service URL: " 
+fi
+read input_string 
+if [ ! -z "$input_string" ] ; then
+    identity_service=$input_string
+fi
 
 if [ -z "$CNH_TENANTID" ] ; then
     echo -n "TenantID: " 
@@ -55,12 +66,14 @@ if [ -f "$f" ] ; then
     chmod 600 "$f"
     cat <<EOF > "$f"
 # Let's Encrypt certbot ACME protcol dns-01 challenge ahthentication data
-# $(date)
+# $(LC_ALL=C date)
 #
 
+identity_service=${identity_service}
 CNH_NAME=${CNH_NAME}
 CNH_PASS=${CNH_PASS}
 CNH_TENANTID=${CNH_TENANTID}
+
 EOF
 fi
 
