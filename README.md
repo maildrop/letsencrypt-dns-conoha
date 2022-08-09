@@ -20,6 +20,11 @@ conoha-acme-challenge2.sh conoha dns acme challenge utility
   remove test challenge token: conoha-acme-challenge2.sh -vr
 ```
 
+## Change
+- Used conoha identity service to get DNS endpoint.
+- Added support for non-wildcard hosts.
+-- Added TXT record of _acme-challenge to the longest matching managed domain for the target host.
+
 ## Requirements
 - CentOS7
 - certbot 0.22.0+
