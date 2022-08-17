@@ -1,203 +1,114 @@
-#!/usr/bin/env -S bash -eu
-# -*- sh-shell: bash; coding: utf-8-unix -*- 
-#
+#!/bin/bash -eu
 
 PATH=/bin:/usr/bin
 export PATH
 
-declare curl=$(which curl)
-declare jq=$(which jq)
-declare dryrun=
-declare verbose=
-declare nowait=
-declare remove_record=
-declare identity_file="conoha_id"
-declare certbot_domain=${CERTBOT_DOMAIN:-$(hostname -f).}
-declare certbot_validation=${CERTBOT_VALIDATION:-DUMMY_DATA_AT_$certbot_domain $(date "+%Y-%m-%d %H:%d:%S%z")}
-
-use_path () {
-    echo "$(readlink -f "$(dirname $(readlink -e $0))/$1")"
+_canonical_domain () {
+    echo "$(echo "$1" | tr -d '[:space:]'| sed -E -e 's/\.+/./g' | sed -E -e 's/^[[:space:]]*\*?\.//' | sed -E -e 's/\.$//' )."
 }
 
-use () {
-    local target=$(use_path $1)
-    if [ ! -f "$target" ]; then
-        echo "$target" is not found.
-        return 3
-    fi
-    source "$target"
-    return 0
+_logger_alert() {
+    logger -p user.alert -t "${0##*/}" "$(printf "$@")"
 }
 
-remove_trailing_dot () {
-    if [ "$1" = "${1%%.}" ] ; then
-        echo $1
-    else
-        remove_trailing_dot "${1%%.}"
-    fi
+_logger_notice () {
+    logger -p user.notice -t "${0##*/}" "$(printf "$@")"
 }
 
-
-print_help () {
-    printf "%s conoha dns acme challenge utility\n" ${0##*/}
-    printf " usage %s [-h] [-v] [-r] [-i <conoha id file>] [-f <fqdn>] [-t <challagne token>]\n" ${0##*/}
-    printf "   -h : help\n"
-    printf "   -v : verbose\n"
-    printf "   -n : no-wait\n"
-    printf "   -r : remove\n"
-    printf "   -i <conoha_id file> : conoha_id file\n"
-    printf "   -f <fqdn> : specify fqdn default \$(hostname -f). = \"%s\"\n" "$(hostname -f)."
-    printf "   -t <challange token> : specify acme challange token\n" 
-    printf "\n"
-    printf " for debug usage\n"
-    printf "  show conoha_id: %s -vh\n" ${0##*/} 
-    printf "  add test challange token: %s -vn\n" ${0##*/} 
-    printf "  remove test challenge token: %s -vr\n" ${0##*/}
-    
-    if [ -n "${verbose:-}" ] ; then
-        echo 
-        echo "= verbose ="
-        echo curl=${curl}
-        echo jq=${jq}
-        echo identity_file=$(use_path ${identity_file})
-        echo certbot_domain=${certbot_domain}
-        echo certbot_validation=${certbot_validation}
-        
-        use ${identity_file};
-
-        echo CNH_NAME=${CNH_NAME}
-        echo CNH_PASS=$( if [ -n "${CNH_PASS}" ] ; then echo "***********************" ; else echo "" ; fi )
-        echo CNH_TENANTID=${CNH_TENANTID}
-    fi
+_logger_info () {
+    logger -p user.info -t "${0##*/}" "$(printf "$@")"
 }
 
-while getopts vhnrdi:f:t: opt ; do
-    case $opt in
-        "v" )
-            verbose=yes;;
-        "h" )
-            print_help
-            exit 0
-            ;;
-        "n" )
-            nowait=yes;;
-        "r" )
-            remove_record=yes;;
-        "d" )
-            dry_run=yes;;
-        "i" )
-            identity_file=$OPTARG;;
-        "f" )
-            certbot_domain="$(remove_trailing_dot "$OPTARG").";;
-        "t" )
-            certbot_validation=$OPTARG;;
-        * )
-        ;;
-    esac
-done
-shift $(($OPTIND -1))
-
-use ${identity_file}
-
-if [ -n "${verbose:-}" ] ; then echo -n "fetch conoha identity token from ${identity_service:-https://identity.tyo1.conoha.io/v2.0} ..." ; fi
-
-declare -r conoha_identity_token_json=$(jq -c . <<EOF | curl -sS "${identity_service:-https://identity.tyo1.conoha.io/v2.0}/tokens" \
-                                                             -X POST -H "Accept: application/json" \
-                                                             --data @- 
-{
-  "auth": {
-    "passwordCredentials": {
-      "username": "${CNH_NAME}" ,
-      "password": "${CNH_PASS}" 
-    },
-    "tenantId": "${CNH_TENANTID}"
-  }
+_logger_debug () {
+    logger -p user.debug -t "${0##*/}" "$(printf "$@")"
 }
-EOF
-        )
-# jq <<< ${conoha_identity_token_json}
 
-if [ -n "${verbose:-}" ] ; then echo " done." ; fi
-
-declare -r CNH_TOKEN=$(jq -r ".access.token.id" <<< $(echo $conoha_identity_token_json))
-declare -r identity_endpoint=$(jq -r '.access.serviceCatalog[] | select( .type == "identity" ) | .endpoints[].publicURL' <<< ${conoha_identity_token_json})
-declare -r dns_endpoint=$(jq -r '.access.serviceCatalog[] | select( .type == "dns" ) | .endpoints[].publicURL' <<< ${conoha_identity_token_json})
-declare -r databasehosting_endpoint=$(jq -r '.access.serviceCatalog[] | select( .type == "databasehosting" ) | .endpoints[].publicURL' <<< ${conoha_identity_token_json})
-declare -r objectstore_endpoint=$(jq -r '.access.serviceCatalog[] | select( .type == "object-store" ) | .endpoints[].publicURL' <<< ${conoha_identity_token_json})
-
-if [ -n "${verbose:-}" ] ; then
-    echo "==== Service endpoint ===="
-    printf "CNH_TOKEN=%s\n" $CNH_TOKEN 
-    printf "Identity endpoint=%s\n" ${identity_endpoint}
-    printf "DNS endpoint=%s\n"  ${dns_endpoint}
-    printf "Database Hosting endpoint=%s\n" ${databasehosting_endpoint} 
-    printf "Object Storage endpoint=%s\n" ${objectstore_endpoint}
-    echo "=========================="
-fi
-
-if [ -n "${verbose:-}" ] ; then echo -n "fetch conoha dns domains ${dns_endpoint}/v1/domains ..."; fi
-declare -r domains_json=$(curl -sS -X GET \
-                               -H "Accept: application/json" \
-                               -H "Content-Type: application/json" \
-                               -H "X-Auth-Token: ${CNH_TOKEN}" \
-                               "${dns_endpoint}/v1/domains");
-if [ -n "${verbose:-}" ] ; then echo " done"; fi
-declare management_domains=()
-
-function listup_candidate_domain(){
+domain_uuid (){
     local domain=$1
-    shift
-    for TARGET_CONOHA_DOMAIN in $* ; do
-        RECORD_NAME=${domain%%${TARGET_CONOHA_DOMAIN}}
-        if [ "${RECORD_NAME%%.}.${TARGET_CONOHA_DOMAIN}" = "${domain}" ] ; then 
-            echo ${TARGET_CONOHA_DOMAIN}
-        fi
-    done
+    jq -r ".domains[] | select ( .name == \"${domain}\" ) | .id " <<< $domains_json;    
 }
 
-
-for domain in $(jq -r ".domains[] | .name " <<< $domains_json) ; do
-    management_domains+=($domain)
-done
-
-declare -r selected_domain=$(listup_candidate_domain ${certbot_domain} "${management_domains[@]}" | awk '{l=length($0); if (m<l) { m = l ; ll=$0 } }END{print ll}')
-
-if [ -n "${verbose:-}" ] ; then
-    echo "== under management domains - begin =="
-    for domain in "${management_domains[@]}" ;do
-        if [ "$domain" = "$selected_domain" ] ; then
-            echo "+ $domain"
-        else
-            echo "  $domain"
-        fi
-    done
-    echo "== under management domains -  end  =="
-fi
-
-if [ -z "$selected_domain" ]; then
-    if [ -n "${verbose:-}" ] ; then echo "domain not found" ; fi 
-    exit 3
-fi
-
-function domain_uuid (){
-    local domain=$1
-    jq -r ".domains[] | select ( .name == \"${selected_domain}\" ) | .id " <<< $domains_json;    
-}
-
-declare -r domain_records=$(curl -sS -X GET \
+upsert_record () {
+    # $1 validation string
+    # $2 domain
+    _logger_notice 'UPSERT "_achme-challenge.%s" 60 IN TXT "%s"' "$2" "**********"
+    local domain_records=$(curl -sS -X GET \
                                  -H "Accept: application/json" \
                                  -H "Content-Type: application/json" \
                                  -H "X-Auth-Token: ${CNH_TOKEN}" \
                                  "${dns_endpoint}/v1/domains/$(domain_uuid "$selected_domain")/records" )
+    local upsertid=$(jq -r ".records[] | select ( .name == \"_acme-challenge.$2\" ) | .id " <<< $domain_records)
+    if [ -n "$upsertid" ]; then
+        _logger_info 'update record %s on "%s"' "$2" "${selected_domain}"
+        jq -c . <<EOF | curl -Ss -X PUT --data @- \
+                             -H "Accept: application/json" \
+                             -H "Content-Type: application/json" \
+                             -H "X-Auth-Token: ${CNH_TOKEN}" \
+                             "${dns_endpoint}/v1/domains/$(domain_uuid "$selected_domain")/records/${upsertid}" | \
+            jq -c '. + {data: "*******************"}' | logger -p user.notice -t "${0##*/}"
+{                            
+  "name": "_acme-challenge.$2",
+  "type": "TXT",
+  "data": "$1",
+  "description": "Let's Encrypt Certbot DNS ACME challenge validation key",
+  "ttl": 60
+}
+EOF
+    else
+        _logger_info 'create record "_acme-challenge.%s" on "%s"' "$2" "${selected_domain}"
+        jq -c . <<EOF | curl -Ss -X POST --data @- \
+                             -H "Accept: application/json" \
+                             -H "Content-Type: application/json" \
+                             -H "X-Auth-Token: ${CNH_TOKEN}" \
+                             "${dns_endpoint}/v1/domains/$(domain_uuid "$selected_domain")/records" | \
+            jq -c '. + {data: "*******************"}'  | logger -p user.notice -t "${0##*/}"
+{
+  "name": "_acme-challenge.$2",
+  "type": "TXT",
+  "data": "$1",
+  "description": "Let's Encrypt Certbot DNS ACME challenge validation key",
+  "ttl": 60
+}
+EOF
+    fi
+    request_wait="yes"
+}
 
+remove_record () {
+    # $1 validation string
+    # $2 domain
+    _logger_notice 'DELETE _achme-challenge.%s 60 IN TXT "%s"' "$2" "*****"
 
-# echo "_acme-challenge.${certbot_domain} : id = $(jq -r ".records[] | select ( .name == \"_acme-challenge.${certbot_domain}\" ) | .id " <<< $domain_records)"
+    local domain_records=$(curl -sS -X GET \
+                                 -H "Accept: application/json" \
+                                 -H "Content-Type: application/json" \
+                                 -H "X-Auth-Token: ${CNH_TOKEN}" \
+                                 "${dns_endpoint}/v1/domains/$(domain_uuid "$selected_domain")/records" )
+    local uuid_of_record=$(jq -r ".records[] | select ( .name == \"_acme-challenge.$2\" ) | .id " <<< $domain_records)
+    if [ -n "$uuid_of_record" ] ; then
+        curl -Ss -X DELETE \
+             -H "Accept: application/json" \
+             -H "Content-Type: application/json" \
+             -H "X-Auth-Token: ${CNH_TOKEN}" \
+             "${dns_endpoint}/v1/domains/$(domain_uuid "$selected_domain")/records/${uuid_of_record}"
+    fi
+}
+
+# request_authtoken() {
+#     if [ -n "${verbose:-}" ] ; then echo -n "fetch conoha identity token from ${identity_service:-https://identity.tyo1.conoha.io/v2.0} ..." ; fi
+
+# }
 
 wait_update_of_nameserver () {
+    # $1 selected_domain
+    # $2 CLASS (ex. "TXT"
+    # $3 ${CERTBOT_DOMAIN}
+    # $4 ${CERTBOT_VALIDATION}
+   
     for nameserver in $(dig NS "$1" +short) ; do
         if [ -n "${verbose:-}" ] ; then echo -n $nameserver ": " ; fi
         local validate=
-        for i in $(seq 6) ; do 
+        for i in $(seq 60) ; do
             if [ "$(dig "@$nameserver" $2 $3 +short)" = "\"$4\"" ] ; then
                 validate=yes
                 break;
@@ -216,65 +127,213 @@ wait_update_of_nameserver () {
     done
 }
 
-dns_record_push ( ){
-    if [ -n "${verbose:-}" ] ; then echo -n "push dns record " ; fi 
-    local response=
-    if [ -n "$(jq -r ".records[] | select ( .type == \"TXT\" and .name == \"_acme-challenge.${certbot_domain}\" ) | .id " <<< $domain_records)" ] ; then
-        if [ -n "${verbose:-}" ] ; then echo "update" ; fi 
-        response=$(curl -Ss -X PUT \
-                        -H "Accept: application/json" \
-                        -H "Content-Type: application/json" \
-                        -H "X-Auth-Token: ${CNH_TOKEN}" \
-                        "${dns_endpoint}/v1/domains/$(domain_uuid "$selected_domain")/records/$(jq -r ".records[] | select ( .type == \"TXT\" and .name == \"_acme-challenge.${certbot_domain}\" ) | .id " <<< $domain_records)" --data @- <<EOF
-{   
-  "name": "_acme-challenge.${certbot_domain}",
-  "type": "TXT",
-  "data": "${certbot_validation}",
-  "description": "Let's Encrypt Certbot DNS ACME challenge validation key",
-  "ttl": 60
-}
-EOF
-              )
+process_record () {
+    local -r selected_domain=$(listup_candidate_domain "$1" "${management_domains[@]}" | awk '{l=length($0); if (m<l) { m = l ; ll=$0 } }END{print ll}')
+    if [ -z "${selected_domain}" ] ; then
+        _logger_alert '"%s" is not under control domain.' "$1"
+        return 1;
+    fi
+    if [ -z "${remove_opt}" ] ; then
+        upsert_record "${validation}" "$1"
     else
-        if [ -n "${verbose:-}" ] ; then echo "create" ; fi 
-        response=$(curl -Ss -X POST \
-                              -H "Accept: application/json" \
-                              -H "Content-Type: application/json" \
-                              -H "X-Auth-Token: ${CNH_TOKEN}" \
-                              "${dns_endpoint}/v1/domains/$(domain_uuid "$selected_domain")/records" \
-                              --data @- <<EOF 
-{                                        
-  "name": "_acme-challenge.${certbot_domain}",
-  "type": "TXT" ,                               
-  "data": "${certbot_validation}",              
-  "description": "Let's Encrypt Certbot DNS ACME challenge validation key",
-  "ttl": 60             
+        remove_record "${validation}" "$1"
+    fi
+}
+
+process () {
+    _logger_debug '$0=%s, pwd="%s", domains="%s"' \
+                  "$(realpath -e "$0")" \
+                  "$PWD" \
+                  "$*"
+
+    for fqdn in "$@" ; do process_record "$fqdn" ; done
+
+    if [ -z "$nowait_opt" ] && [ -n "$request_wait" ] ; then
+        for fqdn in "$@" ; do
+            wait_update_of_nameserver "$(listup_candidate_domain "${fqdn}" "${management_domains[@]}" | awk '{l=length($0); if (m<l) { m = l ; ll=$0 } }END{print ll}')" \
+                                      "TXT" "_acme-challenge.${fqdn}"  "${validation}"
+        done
+    fi
+}
+
+help (){
+    echo "usage: ${0##*/} [-h] [-v] [-r] [-n] [-i conoha_id] [-f certbot_domain] [-t certbot_validation] [fqdn....]"
+    echo " -h : show this Help message." 
+    echo " -v : verbose"
+    echo " -r : remove"
+    echo " -f : certbot_domain (conma separated , override \${CERTBOT_DOMAIN} for debugging or manual operation)"
+    echo " -n : nowait (for debugging or manual operation)"
+    echo " -i : conoha_id file "
+    echo " -t : certbot_validation (override \${CERTBOT_VALIDATION} for debugging or manual operation)"
+    echo "# Configuration #"
+    printf " - conoha_id=%s\n" "$conoha_id"
+    printf " - validation=%s\n" "$validation"
+    printf " - identity_service=%s\n" "${identity_service:-https://identity.tyo1.conoha.io/v2.0}"
+
+}
+
+
+main ( ) {
+    local -
+    set -o noglob
+
+    local verbose=
+    local fqdn_list=()
+    local canonicalaized_list=()
+    local show_help=
+    local remove_opt=
+    local nowait_opt=
+    local validation=${CERTBOT_VALIDATION:-$(date "+DUMMYACMECHALLENGE%Y%m%d-$(hostname -f)")}
+    local conoha_id=/etc/conoha_id
+    local request_wait=
+    while getopts "hrvni:f:t:" opt 
+    do
+        case $opt in
+            h)  show_help=yes;;
+            v)  verbose=yes;;
+            r)  remove_opt=yes;;
+            f)  fqdn_opt=$OPTARG;;
+            n)  nowait_opt=yes;;
+            i)  conoha_id=$OPTARG;;
+            t)  validation=$OPTARG;;
+            *)
+                echo "unkonwn ${opt}"
+                exit 3
+                ;;
+        esac
+    done
+    shift $(($OPTIND - 1 ))
+
+    if [ -f "$conoha_id" ] ; then
+        . "$conoha_id"
+    else
+        echo "cannot read conoha_id file $conoha_id , use -i option"
+        help
+        return 3
+    fi
+    
+    fqdn_list+=($(for param in $( tr ',' ' ' <<< "${fqdn_opt:-${CERTBOT_DOMAIN:-}}" ) ; do \
+                      echo $(_canonical_domain "$param" );\
+                  done))
+
+    for param in "$@" ; do
+        local canonicalized=$(_canonical_domain "$param" )
+        fqdn_list+=($canonicalized)
+    done
+
+    local -r cfqdn_list=( $(sort  <<< $(for domain in "${fqdn_list[@]}"; do echo $domain ; done) | uniq) )
+    
+    if [ -n "${show_help}" ]; then
+        help
+        if [ -z "${verbose:-}" ] ; then
+            return 0
+        fi
+    fi
+
+    if [ -n "${verbose:-}" ] ; then echo -n "fetch conoha identity token from ${identity_service:-https://identity.tyo1.conoha.io/v2.0} ..." ; fi
+
+    local -r conoha_identity_token_json=$(jq -c . <<EOF \
+                                              | curl -sS "${identity_service:-https://identity.tyo1.conoha.io/v2.0}/tokens" \
+                                                     -X POST -H "Accept: application/json" --data @- 
+{
+  "auth": {
+    "passwordCredentials": {
+      "username": "${CNH_NAME}" ,
+      "password": "${CNH_PASS}" 
+    },
+    "tenantId": "${CNH_TENANTID}"
+  }
 }
 EOF
-              )
-    fi
+          )
+
+    if [ -n "${verbose:-}" ] ; then echo " done." ; fi
+
+    local -r CNH_TOKEN=$(jq -r ".access.token.id" <<< $conoha_identity_token_json)
+    local -r identity_endpoint=$(jq -r '.access.serviceCatalog[] | select( .type == "identity" ) | .endpoints[].publicURL' <<< ${conoha_identity_token_json})
+    local -r dns_endpoint=$(jq -r '.access.serviceCatalog[] | select( .type == "dns" ) | .endpoints[].publicURL' <<< ${conoha_identity_token_json})
+    local -r databasehosting_endpoint=$(jq -r '.access.serviceCatalog[] | select( .type == "databasehosting" ) | .endpoints[].publicURL' <<< ${conoha_identity_token_json})
+    local -r objectstore_endpoint=$(jq -r '.access.serviceCatalog[] | select( .type == "object-store" ) | .endpoints[].publicURL' <<< ${conoha_identity_token_json})
+
     if [ -n "${verbose:-}" ] ; then
-        printf "%s IN %s \"%s\"\n" "$(jq -r ".name" <<< $response)" "$(jq -r ".type" <<< $response)" "$(jq -r ".data" <<< $response)" ;
+        echo "==== Service endpoint ===="
+        printf "CNH_TOKEN=%s\n" $CNH_TOKEN 
+        printf "Identity endpoint=%s\n" ${identity_endpoint}
+        printf "DNS endpoint=%s\n"  ${dns_endpoint}
+        printf "Database Hosting endpoint=%s\n" ${databasehosting_endpoint} 
+        printf "Object Storage endpoint=%s\n" ${objectstore_endpoint}
+        echo "=========================="
+        echo 
     fi
+    
+    if [ -n "${verbose:-}" ] ; then
+        echo = Domains =
+        for fqdn in "${fqdn_list[@]}" ; do
+            echo " - \"$fqdn\""
+        done
+        echo -n "fetch conoha dns domains ${dns_endpoint}/v1/domains ...";
+    fi
+
+    local -r domains_json=$(curl -sS -X GET \
+                                   -H "Accept: application/json" \
+                                   -H "Content-Type: application/json" \
+                                   -H "X-Auth-Token: ${CNH_TOKEN}" \
+                                   "${dns_endpoint}/v1/domains");
+
+    if [ -n "${verbose:-}" ] ; then echo " done"; fi
+    local management_domains=()
+    for domain in $(jq -r ".domains[] | .name " <<< $domains_json) ; do
+        management_domains+=($domain)
+    done
+
+    function listup_candidate_domain(){
+        local -r domain=$1
+        local RECORD_NAME=
+        shift
+        for TARGET_CONOHA_DOMAIN in $@ ; do
+            if [ "$domain" = "$TARGET_CONOHA_DOMAIN" ] ; then
+                echo $TARGET_CONOHA_DOMAIN;
+            else
+                RECORD_NAME="${domain%${TARGET_CONOHA_DOMAIN}}"
+                if [ "${RECORD_NAME%.}.${TARGET_CONOHA_DOMAIN}" = "${domain}" ] ; then 
+                    echo ${TARGET_CONOHA_DOMAIN}
+                fi
+            fi
+        done
+    }
+    
+    if [ -n "${verbose:-}" ] ; then
+        echo "=management domain list="
+        for domain in "${management_domains[@]}" ; do
+            printf "[%s] (uuid=\"%s\")\n" "$domain" $(domain_uuid "$domain")
+            for fqdn in "${cfqdn_list[@]}" ; do
+                local selected_domain=$(listup_candidate_domain "${fqdn}" "${management_domains[@]}" | awk '{l=length($0); if (m<l) { m = l ; ll=$0 } }END{print ll}')
+                if [ "$selected_domain" = "$domain" ]; then
+                    printf "  _acme-challenge.%s\n" "$fqdn"
+                fi
+            done
+        done
+        echo "======================="
+        echo 
+    fi
+
+    if [ -n "${show_help}" ]; then
+        return 0
+    fi
+    process "${cfqdn_list[@]}"
+
 }
 
-dns_record_remove () {
-    local response=
-    if [ -n "$(jq -r ".records[] | select ( .type == \"TXT\" and .name == \"_acme-challenge.${certbot_domain}\" ) | .id " <<< $domain_records)" ] ; then
-        response=$(curl -Ss -X DELETE \
-             -H "Accept: application/json" \
-             -H "Content-Type: application/json" \
-             -H "X-Auth-Token: ${CNH_TOKEN}" \
-             "${dns_endpoint}/v1/domains/$(domain_uuid "$selected_domain")/records/$(jq -r ".records[] | select ( .type == \"TXT\" and .name == \"_acme-challenge.${certbot_domain}\" ) | .id " <<< $domain_records)" )
-    fi
-    if [ -n "${verbose:-}" ] ; then echo $response; fi
+check_environment(){
+    local c
+    for c in jq curl; do
+        if [ -z "$(which $c)" ]; then
+            echo "command $c is not found in $PATH"
+            return 3
+        fi
+    done
+    return 0
 }
 
-if [ -z "${remove_record}" ]; then 
-    dns_record_push
-    if [ -z "${nowait:-}" ] ; then
-        wait_update_of_nameserver ${selected_domain} "TXT" "_acme-challenge.${certbot_domain}" "${certbot_validation}"
-    fi
-else
-    dns_record_remove
-fi
+check_environment 
+main "$@"
