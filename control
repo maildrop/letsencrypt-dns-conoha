@@ -1,0 +1,13 @@
+Source: letsencrypt-dns-conoha
+Section: main/admin
+Priority: optional
+Maintainer: Mikito TOGURO <mit@shalab.net>
+Build-Depends: debhelper (>=10) fakeroot make
+Standards-Version: 4.0.0
+Homepage: https://github.com/maildrop/letsencrypt-dns-conoha
+Package: letsencrypt-dns-conoha
+Architecture: all
+Depends: certbot, jq, curl, bash, awk, sed, bind9-dnsutils
+Version: 0.0.1-1
+Description: Let's Encrypt DNS acme challenge for Conoha
+
