@@ -3,40 +3,47 @@
 ## Overview
 Script to get Let's Encrypt Wildcard SSL Certificate using DNS in ConoHa VPS.
 
-```
-conoha-acme-challenge2.sh conoha dns acme challenge utility
- usage conoha-acme-challenge2.sh [-h] [-v] [-r] [-i <conoha id file>] [-f <fqdn>] [-t <challagne token>]
-   -h : help
-   -v : verbose
-   -n : no-wait
-   -r : remove
-   -i <conoha_id file> : conoha_id file
-   -f <fqdn> : specify fqdn default $(hostname -f) = "frederica.iogilab.net"
-   -t <challange token> : specify acme challange token
-
- for debug usage
-  show conoha_id: conoha-acme-challenge2.sh -vh
-  add test challange token: conoha-acme-challenge2.sh -vn
-  remove test challenge token: conoha-acme-challenge2.sh -vr
-```
+## Requirements
+- Debian 11
+- certbot 0.22.0+
+- jq
+- curl
+- DNS to manage your domain with ConoHa VPS.
 
 ## Change
 - Used conoha identity service to get DNS endpoint.
 - Added support for non-wildcard hosts.
     - Added TXT record of _acme-challenge to the longest matching managed domain for the target host.
 
-## Requirements
-- CentOS7
-- certbot 0.22.0+
-- jq
-- curl ( with debian 11 )
-- DNS to manage your domain with ConoHa VPS.
+```
+$ /usr/libexec/conoha-acme-challenge/conoha-acme-challenge.sh -h
+you cannot read conoha_id file /etc/conoha_id , use -i option
+usage: conoha-acme-challenge.sh [-h] [-v] [-r] [-n] [-i conoha_id] [-f certbot_domain] [-t certbot_validation] [fqdn....]
+ -h : show this Help message.
+ -v : verbose
+ -r : remove
+ -f : certbot_domain (conma separated , override ${CERTBOT_DOMAIN} for debugging or manual operation)
+ -n : nowait (for debugging or manual operation)
+ -i : conoha_id file 
+ -t : certbot_validation (override ${CERTBOT_VALIDATION} for debugging or manual operation)
+```
+
+```
+for debug usage
+  show conoha_id: conoha-acme-challenge.sh -vh
+  add test challange token: conoha-acme-challenge2.sh -vn -i /etc/conoha_id -f $(hostname -f) 
+  remove test challenge token: conoha-acme-challenge2.sh -vr -i /etc/conoha_id -f $(hostname -f) 
+```
+
+## .deb package build
+- use ```make deb-package``` 
+
+# Usage
 
 ## Setup
-- Place code in your server.
-- Set username, password and tenantId in the conoha_id
-
-## Usage
+- build ```make deb-package```
+- install ```dpkg -i letsencrypt-dns-conoha_0.0.1-2_all.deb```
+- use ```/usr/sbin/create-conoha_id``` for Set username, password and tenantId in the conoha_id 
 - Test to get Wildcard SSL Certificate.
 ```
 # certbot certonly \
@@ -50,8 +57,8 @@ conoha-acme-challenge2.sh conoha dns acme challenge utility
 -d "<base domain name>" \
 -d "*.<base domain name>" \
 -m "<mail address>" \
---manual-auth-hook /path/to/letsencrypt-dns-conoha/create_conoha_dns_record.sh \
---manual-cleanup-hook /path/to/letsencrypt-dns-conoha/delete_conoha_dns_record.sh
+--manual-auth-hook /var/lib/letsencrypt/letsencrypt-dns-conoha/create_conoha_dns_record.sh \
+--manual-cleanup-hook /var/lib/letsencrypt/letsencrypt-dns-conoha/delete_conoha_dns_record.sh
 ```
 
 - Get Wildcard SSL Certificate.
