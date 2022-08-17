@@ -51,6 +51,17 @@ $ journalctl -t conoha-acme-challenge.sh
 - install ```dpkg -i letsencrypt-dns-conoha_0.0.1-2_all.deb```
 - use ```/usr/sbin/create-conoha_id``` for Set username, password and tenantId in the conoha_id 
 - Test to get Wildcard SSL Certificate.
+
+```
+= NOTE =
+cerate_conoha_dns_record.sh waits until the DNS records are actually applied on the servers listed in the NS records.
+It takes a few minutes for certbot to run.
+ (It depends on the mood of the DNS server, but please watch it for about 10 minutes.)
+This wait can be very long. (wait up to 60 minutes. )
+
+conoha-acme-challenge.sh has an option "-n" to cancel this wait .
+```
+
 ```
 # certbot certonly \
 --dry-run \
