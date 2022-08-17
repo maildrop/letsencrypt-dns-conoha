@@ -8,6 +8,6 @@ Homepage: https://github.com/maildrop/letsencrypt-dns-conoha
 Package: letsencrypt-dns-conoha
 Architecture: all
 Depends: certbot, jq, curl, bash, awk, sed, bind9-dnsutils
-Version: 0.0.1-1
+Version: 0.0.1-2
 Description: Let's Encrypt DNS acme challenge for Conoha
 
