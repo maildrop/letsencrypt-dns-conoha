@@ -205,11 +205,13 @@ main ( ) {
     shift $(($OPTIND - 1 ))
 
     if [ -f "$conoha_id" ] ; then
-        . "$conoha_id"
+        if [ -r "$conoha_id" ] ; then
+            . "$conoha_id"
+        else
+            echo "you cannot read conoha_id file $conoha_id , use -i option"
+        fi
     else
-        echo "cannot read conoha_id file $conoha_id , use -i option"
-        help
-        return 3
+        echo "you cannot read conoha_id file $conoha_id , use -i option"
     fi
     
     fqdn_list+=($(for param in $( tr ',' ' ' <<< "${fqdn_opt:-${CERTBOT_DOMAIN:-}}" ) ; do \
@@ -232,6 +234,21 @@ main ( ) {
 
     if [ -n "${verbose:-}" ] ; then echo -n "fetch conoha identity token from ${identity_service:-https://identity.tyo1.conoha.io/v2.0} ..." ; fi
 
+    if [ -z "${CNH_NAME:-}" ] || [ -z "${CNH_PASS:-}" ] || [ -z "${CNH_TENANTID:-}" ] ; then
+        echo 
+        echo conoha_id error
+        if [ -f "${conoha_id}" ] ; then
+            echo "The file \"${conoha_id}\" is not readable."
+            echo "check \"${conoha_id}\" permission."
+            echo "or use -i option"
+        else
+            echo "The file \"${conoha_id}\" is not found."
+            echo "You can use \"/usr/sbin/create-conoha_id\" to create \"${conoha_id}\" "
+        fi
+        echo 
+        return 3
+    fi
+    
     local -r conoha_identity_token_json=$(jq -c . <<EOF \
                                               | curl -sS "${identity_service:-https://identity.tyo1.conoha.io/v2.0}/tokens" \
                                                      -X POST -H "Accept: application/json" --data @- 
