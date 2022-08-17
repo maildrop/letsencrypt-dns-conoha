@@ -35,6 +35,12 @@ for debug usage
   remove test challenge token: conoha-acme-challenge2.sh -vr -i /etc/conoha_id -f $(hostname -f) 
 ```
 
+## journalctl
+You can see conoha-acme-challange.sh script communication log.
+```
+$ journalctl -t conoha-acme-challenge.sh
+```
+
 ## .deb package build
 - use ```make deb-package``` 
 
@@ -73,8 +79,8 @@ for debug usage
 -d "<base domain name>" \
 -d "*.<base domain name>" \
 -m "<mail address>" \
---manual-auth-hook /path/to/letsencrypt-dns-conoha/create_conoha_dns_record.sh \
---manual-cleanup-hook /path/to/letsencrypt-dns-conoha/delete_conoha_dns_record.sh
+--manual-auth-hook /var/lib/letsencrypt/letsencrypt-dns-conoha/create_conoha_dns_record.sh \
+--manual-cleanup-hook /var/lib/letsencrypt/letsencrypt-dns-conoha/delete_conoha_dns_record.sh
 ```
 
 - Test to renew Wildcard SSL Certificate.
