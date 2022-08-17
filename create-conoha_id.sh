@@ -79,3 +79,5 @@ fi
 
 mv "$f" conoha_id
 
+sudo sh -c " umask 077 ; dd if=\"$(realpath -e conoha_id)\" of=\"/etc/conoha_id\" "
+
