@@ -31,8 +31,8 @@ usage: conoha-acme-challenge.sh [-h] [-v] [-r] [-n] [-i conoha_id] [-f certbot_d
 ```
 for debug usage
   show conoha_id: conoha-acme-challenge.sh -vh
-  add test challange token: conoha-acme-challenge2.sh -vn -i /etc/conoha_id -f $(hostname -f) 
-  remove test challenge token: conoha-acme-challenge2.sh -vr -i /etc/conoha_id -f $(hostname -f) 
+  add test challange token: conoha-acme-challenge.sh -vn -i /etc/conoha_id -f $(hostname -f) 
+  remove test challenge token: conoha-acme-challenge.sh -vr -i /etc/conoha_id -f $(hostname -f) 
 ```
 
 ## journalctl
@@ -48,9 +48,13 @@ $ journalctl -t conoha-acme-challenge.sh
 
 ## Setup
 - build ```make deb-package```
-- install ```dpkg -i letsencrypt-dns-conoha_0.0.1-2_all.deb```
+- install ```dpkg -i letsencrypt-dns-conoha_0.0.2-2_all.deb```
 - use ```/usr/sbin/create-conoha_id``` for Set username, password and tenantId in the conoha_id 
+```
+The default conoha_id file location has been changed to /etc/conoha_id.
+```
 - Test to get Wildcard SSL Certificate.
+
 
 ```
 = NOTE =
@@ -103,6 +107,12 @@ conoha-acme-challenge.sh has an option "-n" to cancel this wait .
 ```
 # certbot renew
 ```
+
+# Change Log
+0.0.2
+When I tried to issue certificates for wildcards and the domains themselves (for example, certificates for *.example.com and example.com), multiple TXT records were required, so I stopped using UPSERT and instead used APPEND.
+In line with this, changes have been made to delete multiple TXT records when removing.
+
 
 ## References
 - [Pre and Post Validation Hooks](https://certbot.eff.org/docs/using.html#pre-and-post-validation-hooks)

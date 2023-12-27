@@ -28,25 +28,17 @@ domain_uuid (){
     jq -r ".domains[] | select ( .name == \"${domain}\" ) | .id " <<< $domains_json;    
 }
 
-upsert_record () {
+append_record () {
     # $1 validation string
     # $2 domain
-    _logger_notice 'UPSERT "_achme-challenge.%s" 60 IN TXT "%s"' "$2" "**********"
-    local domain_records=$(curl -sS -X GET \
-                                 -H "Accept: application/json" \
-                                 -H "Content-Type: application/json" \
-                                 -H "X-Auth-Token: ${CNH_TOKEN}" \
-                                 "${dns_endpoint}/v1/domains/$(domain_uuid "$selected_domain")/records" )
-    local upsertid=$(jq -r ".records[] | select ( .name == \"_acme-challenge.$2\" ) | .id " <<< $domain_records)
-    if [ -n "$upsertid" ]; then
-        _logger_info 'update record %s on "%s"' "$2" "${selected_domain}"
-        jq -c . <<EOF | curl -Ss -X PUT --data @- \
-                             -H "Accept: application/json" \
-                             -H "Content-Type: application/json" \
-                             -H "X-Auth-Token: ${CNH_TOKEN}" \
-                             "${dns_endpoint}/v1/domains/$(domain_uuid "$selected_domain")/records/${upsertid}" | \
-            jq -c '. + {data: "*******************"}' | logger -p user.notice -t "${0##*/}"
-{                            
+    _logger_info 'create record "_acme-challenge.%s" on "%s"' "$2" "${selected_domain}"
+    jq -c . <<EOF | curl -Ss -X POST --data @- \
+                         -H "Accept: application/json" \
+                         -H "Content-Type: application/json" \
+                         -H "X-Auth-Token: ${CNH_TOKEN}" \
+                         "${dns_endpoint}/v1/domains/$(domain_uuid "$selected_domain")/records" | \
+        jq -c '. + {data: "*******************"}'  | logger -p user.notice -t "${0##*/}"
+{       
   "name": "_acme-challenge.$2",
   "type": "TXT",
   "data": "$1",
@@ -54,23 +46,6 @@ upsert_record () {
   "ttl": 60
 }
 EOF
-    else
-        _logger_info 'create record "_acme-challenge.%s" on "%s"' "$2" "${selected_domain}"
-        jq -c . <<EOF | curl -Ss -X POST --data @- \
-                             -H "Accept: application/json" \
-                             -H "Content-Type: application/json" \
-                             -H "X-Auth-Token: ${CNH_TOKEN}" \
-                             "${dns_endpoint}/v1/domains/$(domain_uuid "$selected_domain")/records" | \
-            jq -c '. + {data: "*******************"}'  | logger -p user.notice -t "${0##*/}"
-{
-  "name": "_acme-challenge.$2",
-  "type": "TXT",
-  "data": "$1",
-  "description": "Let's Encrypt Certbot DNS ACME challenge validation key",
-  "ttl": 60
-}
-EOF
-    fi
     request_wait="yes"
 }
 
@@ -84,14 +59,15 @@ remove_record () {
                                  -H "Content-Type: application/json" \
                                  -H "X-Auth-Token: ${CNH_TOKEN}" \
                                  "${dns_endpoint}/v1/domains/$(domain_uuid "$selected_domain")/records" )
-    local uuid_of_record=$(jq -r ".records[] | select ( .name == \"_acme-challenge.$2\" ) | .id " <<< $domain_records)
-    if [ -n "$uuid_of_record" ] ; then
+    
+    for uuid_of_record in $(jq -r ".records[] | select ( .name == \"_acme-challenge.$2\" and .type == \"TXT\" ) | .id " <<< $domain_records) ; do
+        _logger_notice "DELETE RECORD _acme-challenge.$2 ($uuid_of_record)"
         curl -Ss -X DELETE \
              -H "Accept: application/json" \
              -H "Content-Type: application/json" \
              -H "X-Auth-Token: ${CNH_TOKEN}" \
              "${dns_endpoint}/v1/domains/$(domain_uuid "$selected_domain")/records/${uuid_of_record}"
-    fi
+    done
 }
 
 # request_authtoken() {
@@ -109,10 +85,17 @@ wait_update_of_nameserver () {
         if [ -n "${verbose:-}" ] ; then echo -n $nameserver ": " ; fi
         local validate=
         for i in $(seq 60) ; do
-            if [ "$(dig "@$nameserver" $2 $3 +short)" = "\"$4\"" ] ; then
-                validate=yes
-                break;
+            for value in $(dig "@$nameserver" $2 $3 +short) ; do
+                if [ "$value" = "\"$4\"" ] ; then
+                    validate=yes
+                    break
+                fi
+            done
+
+            if [ -n "${validate:-}" ]; then
+                break
             fi
+
             for j in $(seq 10); do
                 if [ -n "${verbose:-}" ] ; then echo -n "." ; fi
                 sleep 6s;
@@ -134,7 +117,7 @@ process_record () {
         return 1;
     fi
     if [ -z "${remove_opt}" ] ; then
-        upsert_record "${validation}" "$1"
+        append_record "${validation}" "$1"
     else
         remove_record "${validation}" "$1"
     fi
@@ -183,7 +166,7 @@ main ( ) {
     local show_help=
     local remove_opt=
     local nowait_opt=
-    local validation=${CERTBOT_VALIDATION:-$(date "+DUMMYACMECHALLENGE%Y%m%d-$(hostname -f)")}
+    local validation=${CERTBOT_VALIDATION:-$(date "+DUMMYACMECHALLENGE%Y%m%d-%s-$(hostname -f)")}
     local conoha_id=/etc/conoha_id
     local request_wait=
     while getopts "hrvni:f:t:" opt 
